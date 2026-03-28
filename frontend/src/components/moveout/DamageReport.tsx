@@ -544,7 +544,7 @@ export default function DamageReport({
 
                     return (
                       <tr
-                        key={item.item_name}
+                        key={`${roomIdx}-${itemIdx}`}
                         className={`border-b border-gray-50 transition-colors dark:border-gray-800/50 ${
                           itemIdx % 2 === 1
                             ? "bg-gray-50/50 dark:bg-[#141414]/50"
