@@ -17,15 +17,22 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/apartments", tags=["apartments"])
 
 
+def _apt_to_response(apartment: Apartment) -> ApartmentResponse:
+    """Convert an Apartment model to ApartmentResponse, resolving thumbnail_url to a signed URL."""
+    response = ApartmentResponse.model_validate(apartment)
+    if response.thumbnail_url:
+        try:
+            response.thumbnail_url = gcs_service.get_public_url(response.thumbnail_url)
+        except Exception:
+            response.thumbnail_url = None
+    return response
+
+
 @router.get("")
 async def list_apartments(db: Session = Depends(get_db)) -> dict:
     """List all apartments."""
     apartments = db.query(Apartment).order_by(Apartment.created_at.desc()).all()
-    return {
-        "apartments": [
-            ApartmentResponse.model_validate(apt) for apt in apartments
-        ]
-    }
+    return {"apartments": [_apt_to_response(apt) for apt in apartments]}
 
 
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=ApartmentResponse)
@@ -49,7 +56,7 @@ async def create_apartment(
     db.commit()
     db.refresh(apartment)
     logger.info("Created apartment %s at %s, %s", apartment.id, data.address, data.city)
-    return ApartmentResponse.model_validate(apartment)
+    return _apt_to_response(apartment)
 
 
 @router.get("/{apartment_id}", response_model=ApartmentResponse)
@@ -64,7 +71,7 @@ async def get_apartment(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Apartment {apartment_id} not found",
         )
-    return ApartmentResponse.model_validate(apartment)
+    return _apt_to_response(apartment)
 
 
 @router.patch("/{apartment_id}", response_model=ApartmentResponse)
@@ -88,7 +95,7 @@ async def update_apartment(
     db.commit()
     db.refresh(apartment)
     logger.info("Updated apartment %s", apartment_id)
-    return ApartmentResponse.model_validate(apartment)
+    return _apt_to_response(apartment)
 
 
 @router.delete("/{apartment_id}")
@@ -185,6 +192,19 @@ async def upload_photos(
         )
 
     photos = await _save_uploaded_photos(apartment_id, files, room_types, "move-in", db)
+
+    # Set thumbnail from the first photo's raw GCS path if not already set
+    if photos and not apartment.thumbnail_url:
+        first_photo = (
+            db.query(Photo)
+            .filter(Photo.apartment_id == apartment_id, Photo.photo_type == "move-in")
+            .order_by(Photo.uploaded_at)
+            .first()
+        )
+        if first_photo:
+            apartment.thumbnail_url = first_photo.storage_url  # raw GCS object path
+            db.commit()
+
     logger.info("Uploaded %d move-in photos for apartment %s", len(photos), apartment_id)
     return {"photos": photos}
 

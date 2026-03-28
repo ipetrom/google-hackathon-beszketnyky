@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import api from "@/lib/api";
-import { InventoryItem, PhotoNote } from "@/types/apartment";
+import { InventoryItem, PhotoNote, Photo } from "@/types/apartment";
 
 interface Step3InventoryProps {
   apartmentId: string;
@@ -73,6 +73,8 @@ export default function Step3Inventory({
   initialPhotoNotes,
 }: Step3InventoryProps) {
   const router = useRouter();
+  const [photos, setPhotos] = useState<Photo[]>([]);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [items, setItems] = useState<InventoryItem[]>(initialItems);
   const [photoNotes, setPhotoNotes] = useState<PhotoNote[]>(
     initialPhotoNotes || []
@@ -95,6 +97,13 @@ export default function Step3Inventory({
   const [newCondition, setNewCondition] = useState<string>("good");
   const [newPosition, setNewPosition] = useState("");
   const [newNotes, setNewNotes] = useState("");
+
+  useEffect(() => {
+    api
+      .get<{ photos: Photo[] }>(`/api/apartments/${apartmentId}/photos`)
+      .then((r) => setPhotos(r.data.photos ?? []))
+      .catch(() => setPhotos([]));
+  }, [apartmentId]);
 
   // Group items by room
   const grouped = items.reduce<Record<string, InventoryItem[]>>((acc, item) => {
@@ -279,6 +288,85 @@ export default function Step3Inventory({
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 dark:border-red-800 dark:bg-red-900/20">
           <p className="text-sm text-red-700 dark:text-red-400">{error}</p>
+        </div>
+      )}
+
+      {/* Uploaded photos strip */}
+      {photos.length > 0 && (
+        <div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+            Uploaded Photos ({photos.length})
+          </p>
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {photos.map((photo, idx) => (
+              <button
+                key={photo.id}
+                type="button"
+                onClick={() => setLightboxIndex(idx)}
+                className="relative h-24 w-32 shrink-0 overflow-hidden rounded-lg border border-gray-200 bg-gray-100 transition-opacity hover:opacity-90 dark:border-gray-700 dark:bg-gray-800"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={photo.storage_url}
+                  alt={photo.room_type || `Photo ${idx + 1}`}
+                  className="h-full w-full object-cover"
+                />
+                {photo.room_type && (
+                  <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] text-white">
+                    {photo.room_type}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Lightbox */}
+      {lightboxIndex !== null && photos[lightboxIndex] && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
+          onClick={() => setLightboxIndex(null)}
+        >
+          <button
+            type="button"
+            onClick={() => setLightboxIndex(null)}
+            className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20"
+            aria-label="Close"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+          {photos.length > 1 && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setLightboxIndex((lightboxIndex + photos.length - 1) % photos.length); }}
+              className="absolute left-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20"
+              aria-label="Previous"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6" /></svg>
+            </button>
+          )}
+          <div className="max-h-[85vh] max-w-[90vw]" onClick={(e) => e.stopPropagation()}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={photos[lightboxIndex].storage_url}
+              alt={photos[lightboxIndex].room_type || "Photo"}
+              className="max-h-[85vh] max-w-[90vw] rounded-lg object-contain"
+            />
+          </div>
+          {photos.length > 1 && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setLightboxIndex((lightboxIndex + 1) % photos.length); }}
+              className="absolute right-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20"
+              aria-label="Next"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
+            </button>
+          )}
+          <p className="absolute bottom-4 text-xs text-white/60">{lightboxIndex + 1} / {photos.length}</p>
         </div>
       )}
 
