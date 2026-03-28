@@ -112,6 +112,8 @@ export interface MoveoutApartment {
 
 export interface RoomItems {
   room_name: string;
+  photo_id: string | null;
+  photo_url: string | null;
   items: {
     id: string;
     item_type: string;

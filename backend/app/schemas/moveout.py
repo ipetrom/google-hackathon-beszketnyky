@@ -29,6 +29,8 @@ class RoomItemResponse(BaseModel):
 
 class RoomGroupResponse(BaseModel):
     room_name: str
+    photo_id: str | None = None
+    photo_url: str | None = None
     items: list[RoomItemResponse]
 
 

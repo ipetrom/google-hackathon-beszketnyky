@@ -81,8 +81,11 @@ export default function RoomInspection({ apartmentId, room, onComplete }: RoomIn
       const formData = new FormData();
       formData.append("files", file);
 
+      const url = room.photo_id
+        ? `/api/moveout/apartments/${apartmentId}/rooms/${encodeURIComponent(room.room_name)}/validate?source_photo_id=${room.photo_id}`
+        : `/api/moveout/apartments/${apartmentId}/rooms/${encodeURIComponent(room.room_name)}/validate`;
       const res = await api.post<ValidationResultType>(
-        `/api/moveout/apartments/${apartmentId}/rooms/${room.room_name}/validate`,
+        url,
         formData,
         { headers: { "Content-Type": "multipart/form-data" } }
       );
@@ -120,8 +123,8 @@ export default function RoomInspection({ apartmentId, room, onComplete }: RoomIn
         assessments: DamageAssessmentItem[];
         room_notes: string | null;
       }>(
-        `/api/moveout/apartments/${apartmentId}/rooms/${room.room_name}/assess`,
-        { photo_storage_url: photoStorageUrl }
+        `/api/moveout/apartments/${apartmentId}/rooms/${encodeURIComponent(room.room_name)}/assess`,
+        { photo_storage_url: photoStorageUrl, source_photo_id: room.photo_id }
       );
 
       setAssessments(res.data.assessments);
@@ -213,6 +216,22 @@ export default function RoomInspection({ apartmentId, room, onComplete }: RoomIn
               })}
             </div>
           </div>
+
+          {/* Original move-in photo reference */}
+          {room.photo_url && (
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-stone-400 dark:text-gray-500">
+                Original Photo (Reference)
+              </p>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={room.photo_url}
+                alt={`Original ${room.room_name} photo`}
+                className="h-48 w-auto rounded-lg border border-green-200 object-cover dark:border-green-800"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+              />
+            </div>
+          )}
 
           {/* Upload zone */}
           <div

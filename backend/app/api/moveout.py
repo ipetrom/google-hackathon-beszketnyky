@@ -57,19 +57,46 @@ async def get_apartment_rooms(apartment_id: str, db: Session = Depends(get_db)) 
 
     items = db.query(InventoryItem).filter(InventoryItem.apartment_id == apartment_id).all()
 
-    rooms: dict[str, list] = {}
+    # Group by photo_id so each original photo becomes a separate group
+    # This ensures two living room photos create two separate inspection steps
+    from collections import OrderedDict
+    groups: OrderedDict[str, dict] = OrderedDict()
     for item in items:
-        room = item.room_type or "other"
-        if room not in rooms:
-            rooms[room] = []
-        rooms[room].append(RoomItemResponse.model_validate(item))
+        key = str(item.photo_id) if item.photo_id else (item.room_type or "other")
+        if key not in groups:
+            groups[key] = {
+                "room_type": item.room_type or "other",
+                "photo_id": str(item.photo_id) if item.photo_id else None,
+                "items": [],
+            }
+        groups[key]["items"].append(RoomItemResponse.model_validate(item))
 
-    return {
-        "rooms": [
-            RoomGroupResponse(room_name=room_name, items=room_items)
-            for room_name, room_items in rooms.items()
-        ]
-    }
+    # Build room groups with unique labels (e.g., "kitchen", "living_room #1", "living_room #2")
+    room_type_count: dict[str, int] = {}
+    result_rooms = []
+    for group in groups.values():
+        rt = group["room_type"]
+        room_type_count[rt] = room_type_count.get(rt, 0) + 1
+        count = room_type_count[rt]
+        label = f"{rt} #{count}" if count > 1 or sum(1 for g in groups.values() if g["room_type"] == rt) > 1 else rt
+
+        # Get original move-in photo URL
+        photo_url = None
+        if group["photo_id"]:
+            photo = db.query(Photo).filter(Photo.id == group["photo_id"]).first()
+            if photo:
+                photo_url = gcs_service.get_public_url(photo.storage_url)
+
+        result_rooms.append(
+            RoomGroupResponse(
+                room_name=label,
+                photo_id=group["photo_id"],
+                photo_url=photo_url,
+                items=group["items"],
+            )
+        )
+
+    return {"rooms": result_rooms}
 
 
 @router.post("/apartments/{apartment_id}/rooms/{room}/validate")
@@ -77,6 +104,7 @@ async def validate_room_photo(
     apartment_id: str,
     room: str,
     files: list[UploadFile] = File(...),
+    source_photo_id: str | None = None,
     db: Session = Depends(get_db),
 ) -> dict:
     """Upload move-out photo for a room and validate that expected items are present."""
@@ -84,16 +112,24 @@ async def validate_room_photo(
     if not apartment:
         raise HTTPException(status_code=404, detail="Apartment not found")
 
-    # Get expected items for this room
-    items = db.query(InventoryItem).filter(
-        InventoryItem.apartment_id == apartment_id,
-        InventoryItem.room_type == room,
-    ).all()
+    # Get expected items — filter by source photo_id if provided, otherwise by room_type
+    if source_photo_id:
+        items = db.query(InventoryItem).filter(
+            InventoryItem.apartment_id == apartment_id,
+            InventoryItem.photo_id == source_photo_id,
+        ).all()
+    else:
+        # Strip "#N" suffix for room_type lookup (e.g., "living_room #2" → "living_room")
+        base_room = room.split(" #")[0]
+        items = db.query(InventoryItem).filter(
+            InventoryItem.apartment_id == apartment_id,
+            InventoryItem.room_type == base_room,
+        ).all()
 
     if not items:
-        raise HTTPException(status_code=400, detail=f"No inventory items found for room: {room}")
+        raise HTTPException(status_code=400, detail=f"No inventory items found for: {room}")
 
-    # Delete old move-out photos for this room (from previous attempts)
+    # Delete old move-out photos for this room label (from previous attempts)
     old_photos = db.query(Photo).filter(
         Photo.apartment_id == apartment_id,
         Photo.room_type == room,
@@ -167,10 +203,18 @@ async def assess_room_damage(
     if not photo_storage_url:
         raise HTTPException(status_code=400, detail="photo_storage_url is required")
 
-    items = db.query(InventoryItem).filter(
-        InventoryItem.apartment_id == apartment_id,
-        InventoryItem.room_type == room,
-    ).all()
+    source_photo_id = body.get("source_photo_id")
+    if source_photo_id:
+        items = db.query(InventoryItem).filter(
+            InventoryItem.apartment_id == apartment_id,
+            InventoryItem.photo_id == source_photo_id,
+        ).all()
+    else:
+        base_room = room.split(" #")[0]
+        items = db.query(InventoryItem).filter(
+            InventoryItem.apartment_id == apartment_id,
+            InventoryItem.room_type == base_room,
+        ).all()
 
     gcs_uri = f"gs://{settings.GCS_BUCKET_NAME}/{photo_storage_url}"
     inventory_data = [

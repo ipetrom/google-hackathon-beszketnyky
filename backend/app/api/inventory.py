@@ -74,30 +74,37 @@ async def generate_inventory(
         result = inventory_ai_service.analyze_photo(gcs_uri)
         photo_results.append(result)
 
-    # Aggregate and deduplicate
-    objects, photo_notes = inventory_ai_service.aggregate_inventory(photo_results)
-
     # Delete existing inventory items
     db.query(InventoryItem).filter(InventoryItem.apartment_id == apartment_id).delete()
 
-    # Save new items
+    # Save items per photo (NO deduplication across photos — each photo is a separate group)
     created_items = []
-    for obj in objects:
-        item = InventoryItem(
-            id=uuid.uuid4(),
-            apartment_id=apartment_id,
-            room_type=obj.get("room"),
-            item_type=obj.get("name", "Unknown"),
-            condition_notes=obj.get("notes"),
-            object_type=obj.get("type"),
-            color=obj.get("color"),
-            material=obj.get("material"),
-            condition=obj.get("condition"),
-            position=obj.get("position"),
-        )
-        db.add(item)
-        db.flush()
-        created_items.append(InventoryItemResponse.model_validate(item))
+    photo_notes = []
+    for photo, result in zip(photos, photo_results):
+        if result.get("photo_notes"):
+            photo_notes.append({
+                "detected_room": result.get("detected_room", "unknown"),
+                "notes": result.get("photo_notes", ""),
+                "photo_id": str(photo.id),
+            })
+
+        for obj in result.get("objects", []):
+            item = InventoryItem(
+                id=uuid.uuid4(),
+                apartment_id=apartment_id,
+                room_type=result.get("detected_room", obj.get("room")),
+                item_type=obj.get("name", "Unknown"),
+                condition_notes=obj.get("notes"),
+                object_type=obj.get("type"),
+                color=obj.get("color"),
+                material=obj.get("material"),
+                condition=obj.get("condition"),
+                position=obj.get("position"),
+                photo_id=photo.id,  # Link item to its source photo
+            )
+            db.add(item)
+            db.flush()
+            created_items.append(InventoryItemResponse.model_validate(item))
 
     # Save photo notes on apartment
     apartment.photo_notes = photo_notes
