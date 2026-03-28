@@ -31,7 +31,7 @@ Return a JSON object with this exact structure:
   ]
 }
 
-Be thorough - include even small items like lamps, rugs, curtains, shelves, mirrors.
+Be concise - include  items like lamps, rugs, curtains, shelves, mirrors. Describe them briefly but informatively.
 Do not include structural elements (walls, doors, windows) unless they have notable features.
 Return ONLY the JSON object, no other text."""
 
@@ -67,11 +67,13 @@ def analyze_photo(gcs_uri: str) -> dict[str, Any]:
         result_text = response.text or "{}"
         result = json.loads(result_text)
 
-        logger.info("Analyzed photo %s: found %d objects", gcs_uri, len(result.get("objects", [])))
+        logger.info("Analyzed photo %s: found %d objects",
+                    gcs_uri, len(result.get("objects", [])))
         return result
 
     except json.JSONDecodeError as e:
-        logger.error("Failed to parse Gemini JSON response for %s: %s", gcs_uri, e)
+        logger.error(
+            "Failed to parse Gemini JSON response for %s: %s", gcs_uri, e)
         return {"detected_room": "unknown", "photo_notes": "Failed to parse AI response", "objects": []}
     except Exception as e:
         logger.error("Failed to analyze photo %s: %s", gcs_uri, e)
@@ -103,7 +105,8 @@ def aggregate_inventory(
 
         # Deduplicate objects by (name, room)
         for obj in result.get("objects", []):
-            key = (obj.get("name", "").lower().strip(), obj.get("room", "unknown"))
+            key = (obj.get("name", "").lower().strip(),
+                   obj.get("room", "unknown"))
             existing = all_objects.get(key)
             if existing is None:
                 all_objects[key] = obj
@@ -115,5 +118,6 @@ def aggregate_inventory(
                     all_objects[key] = obj
 
     deduplicated = list(all_objects.values())
-    logger.info("Aggregated %d unique objects from %d photos", len(deduplicated), len(photo_results))
+    logger.info("Aggregated %d unique objects from %d photos",
+                len(deduplicated), len(photo_results))
     return deduplicated, photo_notes_list
