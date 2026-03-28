@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useCallback, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import api from "@/lib/api";
 import {
   RoomAssessment,
@@ -722,6 +723,7 @@ export default function DamageReport({
         {markdownText && !reportLoading && (
           <div className="rounded-lg border border-gray-100 bg-gray-50 p-5 dark:border-gray-700 dark:bg-[#141414]">
             <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
               components={{
                 h1: ({ children }) => <h1 className="text-2xl font-bold mb-4 text-gray-900 dark:text-gray-100">{children}</h1>,
                 h2: ({ children }) => <h2 className="text-xl font-semibold mt-6 mb-3 text-gray-900 dark:text-gray-100">{children}</h2>,

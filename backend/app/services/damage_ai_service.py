@@ -170,7 +170,8 @@ For each room:
 ### [Room Name]
 - Overall room condition notes
 - Table of items with their status
-- Photos referenced
+
+IMPORTANT: Do NOT include any URLs, file paths, photo references, or links in the report. Photos are displayed separately in the UI.
 
 ## Damage & Cost Summary
 | Item | Room | Status | Issue | Action | Cost (PLN) |
