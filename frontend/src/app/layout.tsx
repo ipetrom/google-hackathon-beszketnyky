@@ -4,7 +4,7 @@ import { ThemeProvider } from "@/lib/theme";
 import ResponsiveShell from "@/components/layout/ResponsiveShell";
 
 export const metadata: Metadata = {
-  title: "SelfLet",
+  title: "SelfFlat",
   description: "AI-Powered Rental Property Management",
 };
 

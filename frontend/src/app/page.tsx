@@ -5,7 +5,7 @@ export default function Home() {
         Dashboard
       </h1>
       <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-        Welcome to SelfLet. Your property overview will appear here.
+        Welcome to SelfFlat. Your property overview will appear here.
       </p>
     </div>
   );
