@@ -147,49 +147,38 @@ def assess_damage(gcs_uri: str, inventory_items: list[dict[str, Any]], room_name
         }
 
 
-MARKDOWN_REPORT_PROMPT = """You are a professional property inspector in Poland generating a formal move-out inspection report.
-
-Based on the following inspection data, generate a detailed, professionally formatted Markdown report.
+MARKDOWN_REPORT_PROMPT = """You are a professional property inspector in Poland writing a brief move-out inspection summary.
 
 Inspection Data:
 {report_json}
 
-Generate a Markdown report with the following sections:
+Write a SHORT, concise Markdown report (max 300 words). Structure:
 
-# Move-Out Inspection Report
+# Move-Out Inspection Summary
 
-## Property Information
-(address, move-out date, inspection date)
+**Property:** address | **Date:** inspection date
 
-## Executive Summary
-(brief overview: total items inspected, how many OK/damaged/missing, total estimated cost)
+## Overview
+2-3 sentences: overall apartment condition, number of items inspected, how many issues found, total estimated cost in PLN.
 
-## Detailed Room-by-Room Assessment
+## Key Findings
+Bullet list of ONLY damaged or missing items (skip items that are OK). For each:
+- **Item name** (room) — brief issue description. Action: repair/replace, ~cost PLN.
 
-For each room:
-### [Room Name]
-- Overall room condition notes
-- Table of items with their status
-
-IMPORTANT: Do NOT include any URLs, file paths, photo references, or links in the report. Photos are displayed separately in the UI.
-
-## Damage & Cost Summary
-| Item | Room | Status | Issue | Action | Cost (PLN) |
-(only damaged and missing items)
+If everything is OK, just write "All items in acceptable condition. No damage detected."
 
 ## Total Estimated Cost
-(bold total)
+**X PLN** — one line.
 
-## Inspector Notes
-(any general observations)
+## Recommendation
+1-2 sentences: whether deposit deduction is warranted and suggested amount.
 
-## Recommendations
-(suggestions for the landlord regarding deposit deductions)
-
-Use proper Markdown formatting with headers, bold text, tables, and bullet points.
-All costs should be in Polish Zloty (PLN).
-Be professional and objective in tone.
-Return ONLY the Markdown text."""
+RULES:
+- Keep it short and to the point. No tables. No verbose descriptions.
+- Do NOT include URLs, file paths, or photo references.
+- Use bold for emphasis, bullets for lists.
+- All costs in PLN.
+- Return ONLY the Markdown text."""
 
 
 def generate_markdown_report(report_data: dict) -> str:

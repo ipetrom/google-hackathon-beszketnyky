@@ -93,6 +93,20 @@ async def validate_room_photo(
     if not items:
         raise HTTPException(status_code=400, detail=f"No inventory items found for room: {room}")
 
+    # Delete old move-out photos for this room (from previous attempts)
+    old_photos = db.query(Photo).filter(
+        Photo.apartment_id == apartment_id,
+        Photo.room_type == room,
+        Photo.photo_type == "move-out",
+    ).all()
+    for old_photo in old_photos:
+        try:
+            gcs_service.delete_single_photo(old_photo.storage_url)
+        except Exception:
+            pass
+        db.delete(old_photo)
+    db.flush()
+
     # Upload first photo to GCS
     file = files[0]
     photo_id = uuid.uuid4()
@@ -177,14 +191,14 @@ async def assess_room_damage(
 
 @router.get("/apartments/{apartment_id}/photos")
 async def get_moveout_photos(apartment_id: str, db: Session = Depends(get_db)) -> dict:
-    """Get all move-in and move-out photos for an apartment."""
+    """Get move-out photos for an apartment."""
     apartment = db.query(Apartment).filter(Apartment.id == apartment_id).first()
     if not apartment:
         raise HTTPException(status_code=404, detail="Apartment not found")
 
     photos = (
         db.query(Photo)
-        .filter(Photo.apartment_id == apartment_id)
+        .filter(Photo.apartment_id == apartment_id, Photo.photo_type == "move-out")
         .order_by(Photo.uploaded_at.desc())
         .all()
     )
