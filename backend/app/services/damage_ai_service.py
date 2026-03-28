@@ -66,10 +66,16 @@ def validate_objects_in_photo(gcs_uri: str, expected_items: list[dict[str, Any]]
     """Check which expected items are visible in a move-out photo."""
     client = create_vertex_client()
 
-    item_list = "\n".join(
-        f"- {item.get('item_type', 'Unknown')} ({item.get('color', 'unknown color')}, {item.get('material', 'unknown material')})"
-        for item in expected_items
-    )
+    # Deduplicate items by name to avoid listing the same item multiple times
+    seen_names = set()
+    unique_items = []
+    for item in expected_items:
+        name = item.get('item_type', 'Unknown').lower().strip()
+        if name not in seen_names:
+            seen_names.add(name)
+            unique_items.append(item.get('item_type', 'Unknown'))
+
+    item_list = "\n".join(f"- {name}" for name in unique_items)
     prompt = VALIDATION_PROMPT_TEMPLATE.format(expected_items=item_list)
 
     mime_type = "image/png" if gcs_uri.lower().endswith(".png") else "image/jpeg"
