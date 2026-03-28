@@ -31,13 +31,14 @@ services:
       - "8000:8000"
     environment:
       - DATABASE_URL=postgresql://rentos_user:rentos_password@db:5432/rentos
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - GCP_PROJECT_ID=${GCP_PROJECT_ID}
+      - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT}
       - GCS_BUCKET_NAME=${GCS_BUCKET_NAME}
-      - GOOGLE_APPLICATION_CREDENTIALS=/app/gcp-credentials.json
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/service-account.json
+      - VERTEX_AI_LOCATION=${VERTEX_AI_LOCATION}
+      - VERTEX_AI_MODEL=${VERTEX_AI_MODEL}
     volumes:
       - ./backend:/app
-      - ./gcp-credentials.json:/app/gcp-credentials.json:ro
+      - ./service-account.json:/app/service-account.json:ro
     depends_on:
       db:
         condition: service_healthy
@@ -53,7 +54,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=http://backend:8000
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
     volumes:
       - ./frontend:/app
       - /app/node_modules
