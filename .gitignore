@@ -78,3 +78,5 @@ logs/
 
 # Docker
 .docker/volumes/
+
+service-account.json
