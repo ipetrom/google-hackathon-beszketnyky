@@ -135,7 +135,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
       {/* Logo */}
       <div className="flex h-14 items-center justify-between px-5">
         <span className="text-lg font-semibold tracking-tight text-gray-900 dark:text-gray-100">
-          RentOS
+          SelfLet
         </span>
         {onClose && (
           <button
