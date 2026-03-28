@@ -21,6 +21,7 @@ class Apartment(Base):
     floor = Column(Integer, nullable=True)
     specifications = Column(JSONB, nullable=True)
     status = Column(String(50), nullable=False, default="vacant")
+    photo_notes = Column(JSONB, nullable=True)
     thumbnail_url = Column(String(500), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at = Column(

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import api from "@/lib/api";
-import { ApartmentCreate, Apartment, InventoryItem } from "@/types/apartment";
+import { ApartmentCreate, Apartment, InventoryItem, PhotoNote } from "@/types/apartment";
 import Step1Details from "@/components/apartments/AddApartmentWizard/Step1Details";
 import Step2Photos from "@/components/apartments/AddApartmentWizard/Step2Photos";
 import Step3Inventory from "@/components/apartments/AddApartmentWizard/Step3Inventory";
@@ -17,6 +17,7 @@ export default function NewApartmentPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [apartmentId, setApartmentId] = useState<string | null>(null);
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
+  const [photoNotes, setPhotoNotes] = useState<PhotoNote[]>([]);
 
   const handleStep1Submit = async (data: ApartmentCreate) => {
     setIsLoading(true);
@@ -31,8 +32,9 @@ export default function NewApartmentPage() {
     }
   };
 
-  const handleStep2Complete = (items: InventoryItem[]) => {
+  const handleStep2Complete = (items: InventoryItem[], notes: PhotoNote[]) => {
     setInventoryItems(items);
+    setPhotoNotes(notes);
     setCurrentStep(2);
   };
 
@@ -148,6 +150,7 @@ export default function NewApartmentPage() {
           <Step3Inventory
             apartmentId={apartmentId}
             initialItems={inventoryItems}
+            initialPhotoNotes={photoNotes}
           />
         )}
       </div>

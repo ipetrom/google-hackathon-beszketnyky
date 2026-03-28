@@ -42,5 +42,6 @@ class ApartmentResponse(BaseModel):
     specifications: dict | None = None
     status: str
     thumbnail_url: str | None = None
+    photo_notes: dict | list | None = None
     created_at: datetime
     updated_at: datetime

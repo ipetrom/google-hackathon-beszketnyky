@@ -24,6 +24,11 @@ class InventoryItem(Base):
         ForeignKey("photos.id", ondelete="SET NULL"),
         nullable=True,
     )
+    object_type = Column(String(50), nullable=True)
+    color = Column(String(100), nullable=True)
+    material = Column(String(100), nullable=True)
+    condition = Column(String(50), nullable=True)
+    position = Column(String(255), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     # Relationships

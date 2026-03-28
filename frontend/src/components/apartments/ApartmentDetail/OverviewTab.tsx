@@ -9,11 +9,48 @@ interface OverviewTabProps {
   apartment: Apartment;
 }
 
+const TYPE_BADGE_STYLES: Record<string, string> = {
+  furniture:
+    "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300",
+  appliance:
+    "bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-300",
+  fixture:
+    "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300",
+  decor:
+    "bg-pink-100 text-pink-700 dark:bg-pink-500/20 dark:text-pink-300",
+  storage:
+    "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300",
+  lighting:
+    "bg-yellow-100 text-yellow-700 dark:bg-yellow-500/20 dark:text-yellow-300",
+  other:
+    "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300",
+};
+
+const CONDITION_BADGE_STYLES: Record<string, string> = {
+  excellent:
+    "bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-300",
+  good:
+    "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300",
+  fair:
+    "bg-yellow-100 text-yellow-700 dark:bg-yellow-500/20 dark:text-yellow-300",
+  poor:
+    "bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-300",
+  damaged:
+    "bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300",
+};
+
+function formatRoomName(detected_room: string): string {
+  return detected_room
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 export default function OverviewTab({ apartment }: OverviewTabProps) {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [loadingPhotos, setLoadingPhotos] = useState(true);
   const [loadingInventory, setLoadingInventory] = useState(true);
+  const [photoNotesExpanded, setPhotoNotesExpanded] = useState(false);
 
   useEffect(() => {
     api
@@ -32,6 +69,8 @@ export default function OverviewTab({ apartment }: OverviewTabProps) {
   const specEntries = apartment.specifications
     ? Object.entries(apartment.specifications).filter(([, v]) => v)
     : [];
+
+  const photoNotes = apartment.photo_notes || [];
 
   // Group inventory by room
   const grouped = inventory.reduce<Record<string, InventoryItem[]>>(
@@ -132,32 +171,124 @@ export default function OverviewTab({ apartment }: OverviewTabProps) {
           </div>
         ) : (
           <div className="space-y-4">
+            {/* AI Photo Notes */}
+            {photoNotes.length > 0 && (
+              <div className="rounded-lg border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800/50">
+                <button
+                  type="button"
+                  onClick={() => setPhotoNotesExpanded(!photoNotesExpanded)}
+                  className="flex w-full items-center justify-between px-4 py-3 text-left"
+                >
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    AI Photo Notes ({photoNotes.length} photo
+                    {photoNotes.length !== 1 ? "s" : ""} analyzed)
+                  </span>
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className={`text-gray-400 transition-transform ${
+                      photoNotesExpanded ? "rotate-180" : ""
+                    }`}
+                  >
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                </button>
+                {photoNotesExpanded && (
+                  <div className="border-t border-gray-200 px-4 py-3 dark:border-gray-700">
+                    <ul className="space-y-2">
+                      {photoNotes.map((note, idx) => (
+                        <li key={idx} className="text-sm text-gray-600 dark:text-gray-400">
+                          <span className="font-semibold text-gray-900 dark:text-gray-200">
+                            {formatRoomName(note.detected_room)}:
+                          </span>{" "}
+                          {note.notes}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+
             {Object.entries(grouped).map(([room, roomItems]) => (
               <div key={room}>
                 <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
                   {room}
                 </h4>
                 <div className="divide-y divide-gray-200 rounded-lg border border-gray-200 bg-white dark:divide-gray-700 dark:border-gray-700 dark:bg-[#1a1a1a]">
-                  {roomItems.map((item) => (
-                    <div
-                      key={item.id}
-                      className="flex items-center gap-3 px-4 py-3"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                          {item.item_type}
-                        </p>
-                        {item.condition_notes && (
-                          <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                            {item.condition_notes}
-                          </p>
-                        )}
+                  {roomItems.map((item) => {
+                    const hasSubtitle = item.color || item.material;
+
+                    return (
+                      <div
+                        key={item.id}
+                        className="px-4 py-3"
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className="min-w-0 flex-1">
+                            {/* Name + badges */}
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                                {item.item_type}
+                              </p>
+                              {item.object_type && (
+                                <span
+                                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                                    TYPE_BADGE_STYLES[item.object_type] ||
+                                    TYPE_BADGE_STYLES.other
+                                  }`}
+                                >
+                                  {item.object_type}
+                                </span>
+                              )}
+                              {item.condition && (
+                                <span
+                                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                                    CONDITION_BADGE_STYLES[item.condition] ||
+                                    CONDITION_BADGE_STYLES.fair
+                                  }`}
+                                >
+                                  {item.condition}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Color + Material subtitle */}
+                            {hasSubtitle && (
+                              <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                                {[item.color, item.material]
+                                  .filter(Boolean)
+                                  .join(" \u00B7 ")}
+                              </p>
+                            )}
+
+                            {/* Position */}
+                            {item.position && (
+                              <p className="mt-0.5 text-xs italic text-gray-400 dark:text-gray-500">
+                                {item.position}
+                              </p>
+                            )}
+
+                            {/* Condition notes */}
+                            {item.condition_notes && (
+                              <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                                {item.condition_notes}
+                              </p>
+                            )}
+                          </div>
+                          <span className="flex-shrink-0 inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                            {item.room_type || "Unassigned"}
+                          </span>
+                        </div>
                       </div>
-                      <span className="flex-shrink-0 inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-300">
-                        {item.room_type || "Unassigned"}
-                      </span>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             ))}

@@ -41,7 +41,7 @@ async def generate_inventory(
     apartment_id: str,
     db: Session = Depends(get_db),
 ) -> dict:
-    """Generate inventory items for an apartment (mock for MVP)."""
+    """Generate inventory items from apartment photos using Gemini Vision AI."""
     apartment = db.query(Apartment).filter(Apartment.id == apartment_id).first()
     if not apartment:
         raise HTTPException(
@@ -49,30 +49,69 @@ async def generate_inventory(
             detail=f"Apartment {apartment_id} not found",
         )
 
-    mock_items = [
-        {"room_type": "living_room", "item_type": "Sofa", "condition_notes": "Good condition"},
-        {"room_type": "living_room", "item_type": "Coffee Table", "condition_notes": "Minor scratches"},
-        {"room_type": "living_room", "item_type": "TV", "condition_notes": "Working, 55 inch"},
-        {"room_type": "bathroom", "item_type": "Washing Machine", "condition_notes": "Good condition"},
-        {"room_type": "kitchen", "item_type": "Refrigerator", "condition_notes": "Good condition, clean"},
-    ]
+    # Fetch all move-in photos
+    from app.models.photo import Photo
+    photos = (
+        db.query(Photo)
+        .filter(Photo.apartment_id == apartment_id, Photo.photo_type == "move-in")
+        .all()
+    )
 
-    created_items: list[InventoryItemResponse] = []
-    for item_data in mock_items:
+    if not photos:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No photos uploaded. Upload photos first before generating inventory.",
+        )
+
+    # Analyze each photo with Gemini Vision
+    from app.services import inventory_ai_service
+    from app.core.config import settings
+
+    photo_results = []
+    for photo in photos:
+        gcs_uri = f"gs://{settings.GCS_BUCKET_NAME}/{photo.storage_url}"
+        logger.info("Analyzing photo: %s", gcs_uri)
+        result = inventory_ai_service.analyze_photo(gcs_uri)
+        photo_results.append(result)
+
+    # Aggregate and deduplicate
+    objects, photo_notes = inventory_ai_service.aggregate_inventory(photo_results)
+
+    # Delete existing inventory items
+    db.query(InventoryItem).filter(InventoryItem.apartment_id == apartment_id).delete()
+
+    # Save new items
+    created_items = []
+    for obj in objects:
         item = InventoryItem(
             id=uuid.uuid4(),
             apartment_id=apartment_id,
-            room_type=item_data["room_type"],
-            item_type=item_data["item_type"],
-            condition_notes=item_data["condition_notes"],
+            room_type=obj.get("room"),
+            item_type=obj.get("name", "Unknown"),
+            condition_notes=obj.get("notes"),
+            object_type=obj.get("type"),
+            color=obj.get("color"),
+            material=obj.get("material"),
+            condition=obj.get("condition"),
+            position=obj.get("position"),
         )
         db.add(item)
         db.flush()
         created_items.append(InventoryItemResponse.model_validate(item))
 
+    # Save photo notes on apartment
+    apartment.photo_notes = photo_notes
     db.commit()
-    logger.info("Generated %d mock inventory items for apartment %s", len(created_items), apartment_id)
-    return {"inventory_items": created_items, "message": "Inventory generated (mock)"}
+
+    logger.info(
+        "Generated %d inventory items for apartment %s from %d photos",
+        len(created_items), apartment_id, len(photos),
+    )
+    return {
+        "inventory_items": created_items,
+        "photo_notes": photo_notes,
+        "message": f"Analyzed {len(photos)} photos, found {len(created_items)} items",
+    }
 
 
 @router.patch("/apartments/{apartment_id}/inventory")
@@ -102,6 +141,11 @@ async def update_inventory(
             item_type=item_data.item_type,
             condition_notes=item_data.condition_notes,
             photo_id=item_data.photo_id,
+            object_type=item_data.object_type,
+            color=item_data.color,
+            material=item_data.material,
+            condition=item_data.condition,
+            position=item_data.position,
         )
         db.add(item)
         db.flush()

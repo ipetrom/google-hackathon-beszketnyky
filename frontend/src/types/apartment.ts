@@ -1,3 +1,8 @@
+export interface PhotoNote {
+  detected_room: string;
+  notes: string;
+}
+
 export interface Apartment {
   id: string;
   address: string;
@@ -10,6 +15,7 @@ export interface Apartment {
   specifications: Record<string, boolean> | null;
   status: 'vacant' | 'listed' | 'rented' | 'move-out';
   thumbnail_url: string | null;
+  photo_notes: PhotoNote[] | null;
   created_at: string;
   updated_at: string;
 }
@@ -41,6 +47,11 @@ export interface InventoryItem {
   item_type: string;
   condition_notes: string | null;
   photo_id: string | null;
+  object_type: string | null;
+  color: string | null;
+  material: string | null;
+  condition: string | null;
+  position: string | null;
   created_at: string;
 }
 

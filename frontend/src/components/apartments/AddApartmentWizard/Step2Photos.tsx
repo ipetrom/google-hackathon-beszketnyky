@@ -2,12 +2,12 @@
 
 import { useState, useRef } from "react";
 import api from "@/lib/api";
-import { InventoryItem } from "@/types/apartment";
+import { InventoryItem, PhotoNote } from "@/types/apartment";
 import PhotoUpload from "@/components/common/PhotoUpload";
 
 interface Step2PhotosProps {
   apartmentId: string;
-  onComplete: (inventoryItems: InventoryItem[]) => void;
+  onComplete: (inventoryItems: InventoryItem[], photoNotes: PhotoNote[]) => void;
   onBack: () => void;
 }
 
@@ -54,11 +54,11 @@ export default function Step2Photos({
 
       // Step 2: Generate inventory
       setStatusText("AI is analyzing your photos...");
-      const res = await api.post<{ inventory_items: InventoryItem[] }>(
+      const res = await api.post<{ inventory_items: InventoryItem[]; photo_notes?: PhotoNote[] }>(
         `/api/apartments/${apartmentId}/inventory/generate`
       );
 
-      onComplete(res.data.inventory_items);
+      onComplete(res.data.inventory_items, res.data.photo_notes || []);
     } catch (err) {
       console.error(err);
       setError("Something went wrong. Please try again.");
