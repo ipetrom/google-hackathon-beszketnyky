@@ -1,0 +1,51 @@
+[tool.poetry]
+name = "rentos-backend"
+version = "0.1.0"
+description = "RentOS Backend API - AI-powered rental property management"
+authors = ["RentOS Team"]
+readme = "README.md"
+packages = [{include = "app"}]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+fastapi = "^0.115.0"
+uvicorn = {extras = ["standard"], version = "^0.32.0"}
+pydantic = "^2.10.0"
+pydantic-settings = "^2.6.0"
+sqlalchemy = "^2.0.36"
+psycopg2-binary = "^2.9.10"
+alembic = "^1.14.0"
+python-multipart = "^0.0.18"
+langchain = "^0.3.14"
+langchain-google-genai = "^2.0.8"
+google-generativeai = "^0.8.3"
+google-cloud-storage = "^2.19.0"
+python-dotenv = "^1.0.1"
+httpx = "^0.28.1"
+pillow = "^11.0.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.4"
+pytest-asyncio = "^0.24.0"
+black = "^24.10.0"
+ruff = "^0.8.4"
+mypy = "^1.13.0"
+ipython = "^8.31.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 100
+target-version = ['py312']
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
