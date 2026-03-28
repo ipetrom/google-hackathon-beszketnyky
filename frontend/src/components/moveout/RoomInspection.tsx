@@ -79,7 +79,7 @@ export default function RoomInspection({ apartmentId, room, onComplete }: RoomIn
 
     try {
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("files", file);
 
       const res = await api.post<ValidationResultType>(
         `/api/moveout/apartments/${apartmentId}/rooms/${room.room_name}/validate`,

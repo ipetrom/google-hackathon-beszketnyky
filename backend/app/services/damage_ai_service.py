@@ -145,3 +145,67 @@ def assess_damage(gcs_uri: str, inventory_items: list[dict[str, Any]], room_name
             ],
             "room_notes": f"Assessment failed: {str(e)}",
         }
+
+
+MARKDOWN_REPORT_PROMPT = """You are a professional property inspector in Poland generating a formal move-out inspection report.
+
+Based on the following inspection data, generate a detailed, professionally formatted Markdown report.
+
+Inspection Data:
+{report_json}
+
+Generate a Markdown report with the following sections:
+
+# Move-Out Inspection Report
+
+## Property Information
+(address, move-out date, inspection date)
+
+## Executive Summary
+(brief overview: total items inspected, how many OK/damaged/missing, total estimated cost)
+
+## Detailed Room-by-Room Assessment
+
+For each room:
+### [Room Name]
+- Overall room condition notes
+- Table of items with their status
+- Photos referenced
+
+## Damage & Cost Summary
+| Item | Room | Status | Issue | Action | Cost (PLN) |
+(only damaged and missing items)
+
+## Total Estimated Cost
+(bold total)
+
+## Inspector Notes
+(any general observations)
+
+## Recommendations
+(suggestions for the landlord regarding deposit deductions)
+
+Use proper Markdown formatting with headers, bold text, tables, and bullet points.
+All costs should be in Polish Zloty (PLN).
+Be professional and objective in tone.
+Return ONLY the Markdown text."""
+
+
+def generate_markdown_report(report_data: dict) -> str:
+    """Generate a professionally formatted Markdown report from inspection data."""
+    client = create_vertex_client()
+
+    report_json = json.dumps(report_data, indent=2, default=str)
+    prompt = MARKDOWN_REPORT_PROMPT.format(report_json=report_json)
+
+    try:
+        response = client.models.generate_content(
+            model=get_model_id(),
+            contents=prompt,
+        )
+        markdown_text = response.text or "# Report Generation Failed\n\nUnable to generate report."
+        logger.info("Generated markdown report (%d characters)", len(markdown_text))
+        return markdown_text
+    except Exception as e:
+        logger.error("Failed to generate markdown report: %s", e)
+        return f"# Report Generation Failed\n\nError: {str(e)}"

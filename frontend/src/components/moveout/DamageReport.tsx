@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
+import ReactMarkdown from "react-markdown";
 import api from "@/lib/api";
 import {
   RoomAssessment,
@@ -25,6 +26,13 @@ interface EditableRoom {
   assessments: EditableItem[];
   room_notes: string | null;
   move_out_photo_url: string | null;
+}
+
+interface MoveOutPhoto {
+  id: string;
+  room_type: string;
+  storage_url: string;
+  uploaded_at: string;
 }
 
 function calculateSummary(rooms: EditableRoom[]): {
@@ -99,6 +107,57 @@ function ActionBadge({ action }: { action: string | null }) {
   );
 }
 
+/* ---- Photo Lightbox Modal ---- */
+function PhotoLightbox({
+  src,
+  alt,
+  onClose,
+}: {
+  src: string;
+  alt: string;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Photo lightbox"
+    >
+      <div
+        className="relative max-h-[90vh] max-w-[90vw]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          onClick={onClose}
+          className="absolute -right-3 -top-3 flex h-8 w-8 items-center justify-center rounded-full bg-white text-gray-700 shadow-lg transition-colors hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+          aria-label="Close lightbox"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={src}
+          alt={alt}
+          className="max-h-[85vh] max-w-full rounded-lg object-contain"
+        />
+      </div>
+    </div>
+  );
+}
+
 export default function DamageReport({
   apartmentId,
   apartmentAddress,
@@ -126,7 +185,47 @@ export default function DamageReport({
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
+  // Photos state
+  const [photos, setPhotos] = useState<MoveOutPhoto[]>([]);
+  const [photosLoading, setPhotosLoading] = useState(true);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+
+  // AI Report state
+  const [markdownText, setMarkdownText] = useState<string | null>(null);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportError, setReportError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
   const summary = useMemo(() => calculateSummary(rooms), [rooms]);
+
+  // Fetch move-out photos on mount
+  useEffect(() => {
+    const fetchPhotos = async () => {
+      try {
+        const res = await api.get<{ photos: MoveOutPhoto[] }>(
+          `/api/moveout/apartments/${apartmentId}/photos`
+        );
+        setPhotos(res.data.photos);
+      } catch {
+        // Photos are supplementary; silently handle failure
+        setPhotos([]);
+      } finally {
+        setPhotosLoading(false);
+      }
+    };
+    fetchPhotos();
+  }, [apartmentId]);
+
+  // Group photos by room_type
+  const photosByRoom = useMemo(() => {
+    const grouped: Record<string, MoveOutPhoto[]> = {};
+    for (const photo of photos) {
+      const key = photo.room_type || "unknown";
+      if (!grouped[key]) grouped[key] = [];
+      grouped[key].push(photo);
+    }
+    return grouped;
+  }, [photos]);
 
   const updateItem = useCallback(
     (
@@ -192,31 +291,33 @@ export default function DamageReport({
     }
   };
 
+  const buildReportData = (): DamageReportData => ({
+    apartment_id: apartmentId,
+    apartment_address: apartmentAddress,
+    moveout_date: "2026-03-31",
+    inspection_date: new Date().toISOString().split("T")[0],
+    rooms: rooms.map((r) => ({
+      room: r.room,
+      assessments: r.assessments.map((a) => ({
+        item_name: a.item_name,
+        original_condition: a.original_condition,
+        current_status: a.current_status,
+        damage_description: a.damage_description,
+        action: a.action,
+        estimated_cost_pln: a.estimated_cost_pln,
+      })),
+      room_notes: r.room_notes,
+      move_out_photo_url: r.move_out_photo_url,
+    })),
+    summary: calculateSummary(rooms),
+    landlord_notes: landlordNotes,
+  });
+
   const handleFinalize = async () => {
     setSaving(true);
     setSaveError(null);
 
-    const reportData: DamageReportData = {
-      apartment_id: apartmentId,
-      apartment_address: apartmentAddress,
-      moveout_date: "2026-03-31",
-      inspection_date: new Date().toISOString().split("T")[0],
-      rooms: rooms.map((r) => ({
-        room: r.room,
-        assessments: r.assessments.map((a) => ({
-          item_name: a.item_name,
-          original_condition: a.original_condition,
-          current_status: a.current_status,
-          damage_description: a.damage_description,
-          action: a.action,
-          estimated_cost_pln: a.estimated_cost_pln,
-        })),
-        room_notes: r.room_notes,
-        move_out_photo_url: r.move_out_photo_url,
-      })),
-      summary: calculateSummary(rooms),
-      landlord_notes: landlordNotes,
-    };
+    const reportData = buildReportData();
 
     try {
       await api.post(`/api/moveout/apartments/${apartmentId}/report`, {
@@ -232,10 +333,57 @@ export default function DamageReport({
     }
   };
 
+  const handleGenerateReport = async () => {
+    setReportLoading(true);
+    setReportError(null);
+
+    const reportData = buildReportData();
+
+    try {
+      const res = await api.post<{ markdown: string }>(
+        `/api/moveout/apartments/${apartmentId}/report/markdown`,
+        { report_data: reportData }
+      );
+      setMarkdownText(res.data.markdown);
+    } catch {
+      setReportError("Failed to generate report. Please try again.");
+    } finally {
+      setReportLoading(false);
+    }
+  };
+
+  const handleCopyReport = async () => {
+    if (!markdownText) return;
+    try {
+      await navigator.clipboard.writeText(markdownText);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Fallback for older browsers
+      const textarea = document.createElement("textarea");
+      textarea.value = markdownText;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textarea);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
   const today = formatDate(new Date());
 
   return (
     <div className="space-y-8">
+      {/* Lightbox */}
+      {lightboxSrc && (
+        <PhotoLightbox
+          src={lightboxSrc}
+          alt="Move-out photo"
+          onClose={() => setLightboxSrc(null)}
+        />
+      )}
+
       {/* Success banner */}
       {saveSuccess && (
         <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 dark:border-green-800 dark:bg-green-900/20">
@@ -327,116 +475,158 @@ export default function DamageReport({
       </div>
 
       {/* Per-room breakdown */}
-      {rooms.map((room, roomIdx) => (
-        <div
-          key={room.room}
-          className="rounded-lg border border-gray-200 bg-white dark:border-gray-800 dark:bg-[#1a1a1a]"
-        >
-          <div className="border-b border-gray-100 px-4 py-3 dark:border-gray-800">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-              {room.room}
-            </h3>
-            {room.room_notes && (
-              <p className="mt-1 text-xs italic text-gray-500 dark:text-gray-400">
-                {room.room_notes}
+      {rooms.map((room, roomIdx) => {
+        const roomPhotos = photosByRoom[room.room] || [];
+
+        return (
+          <div
+            key={room.room}
+            className="rounded-lg border border-gray-200 bg-white dark:border-gray-800 dark:bg-[#1a1a1a]"
+          >
+            <div className="border-b border-gray-100 px-4 py-3 dark:border-gray-800">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                {room.room}
+              </h3>
+              {room.room_notes && (
+                <p className="mt-1 text-xs italic text-gray-500 dark:text-gray-400">
+                  {room.room_notes}
+                </p>
+              )}
+            </div>
+
+            {/* Move-out photos row */}
+            <div className="border-b border-gray-100 px-4 py-3 dark:border-gray-800">
+              <p className="mb-2 text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                Move-Out Photos
               </p>
-            )}
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100 bg-gray-50 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:bg-[#141414] dark:text-gray-400">
-                  <th className="px-4 py-2.5">Item</th>
-                  <th className="px-4 py-2.5">Original Condition</th>
-                  <th className="px-4 py-2.5">Status</th>
-                  <th className="px-4 py-2.5">Damage</th>
-                  <th className="px-4 py-2.5">Action</th>
-                  <th className="px-4 py-2.5 text-right">Cost (PLN)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {room.assessments.map((item, itemIdx) => {
-                  const isEditingThisCost =
-                    editingCost?.roomIdx === roomIdx &&
-                    editingCost?.itemIdx === itemIdx;
-
-                  return (
-                    <tr
-                      key={item.item_name}
-                      className={`border-b border-gray-50 transition-colors dark:border-gray-800/50 ${
-                        itemIdx % 2 === 1
-                          ? "bg-gray-50/50 dark:bg-[#141414]/50"
-                          : ""
-                      }`}
+              {photosLoading ? (
+                <div className="flex items-center gap-2 py-2">
+                  <svg className="h-4 w-4 animate-spin text-gray-400" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  <span className="text-xs text-gray-400">Loading photos...</span>
+                </div>
+              ) : roomPhotos.length > 0 ? (
+                <div className="flex gap-3 overflow-x-auto pb-1">
+                  {roomPhotos.map((photo) => (
+                    <button
+                      key={photo.id}
+                      onClick={() => setLightboxSrc(photo.storage_url)}
+                      className="flex-shrink-0 cursor-pointer overflow-hidden rounded-lg transition-opacity hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
+                      aria-label={`View photo of ${room.room}`}
                     >
-                      <td className="px-4 py-2.5 font-medium text-gray-900 dark:text-gray-100">
-                        {item.item_name}
-                      </td>
-                      <td className="px-4 py-2.5 text-gray-600 dark:text-gray-400">
-                        {item.original_condition || "--"}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <select
-                          value={item.current_status}
-                          onChange={(e) =>
-                            handleStatusChange(roomIdx, itemIdx, e.target.value)
-                          }
-                          className="cursor-pointer rounded border-0 bg-transparent p-0 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-1 dark:focus:ring-offset-gray-900"
-                          aria-label={`Status for ${item.item_name}`}
-                        >
-                          <option value="ok">OK</option>
-                          <option value="damaged">Damaged</option>
-                          <option value="missing">Missing</option>
-                        </select>
-                        <div className="mt-0.5">
-                          <StatusBadge status={item.current_status} />
-                        </div>
-                      </td>
-                      <td className="max-w-[200px] px-4 py-2.5 text-gray-600 dark:text-gray-400">
-                        {item.damage_description || "--"}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <ActionBadge action={item.action} />
-                      </td>
-                      <td className="px-4 py-2.5 text-right">
-                        {isEditingThisCost ? (
-                          <input
-                            type="number"
-                            min="0"
-                            value={costInput}
-                            onChange={(e) => setCostInput(e.target.value)}
-                            onBlur={commitCost}
-                            onKeyDown={handleCostKeyDown}
-                            autoFocus
-                            className="w-24 rounded border border-indigo-300 bg-white px-2 py-1 text-right text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-indigo-600 dark:bg-[#0f0f0f] dark:text-gray-100"
-                            aria-label={`Edit cost for ${item.item_name}`}
-                          />
-                        ) : (
-                          <button
-                            onClick={() => startEditCost(roomIdx, itemIdx)}
-                            className="group cursor-pointer text-right"
-                            aria-label={`Click to edit cost for ${item.item_name}`}
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={photo.storage_url}
+                        alt={`${room.room} move-out photo`}
+                        className="h-[90px] w-[120px] rounded-lg object-cover"
+                      />
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="py-2 text-xs text-gray-400 dark:text-gray-500">
+                  No photos uploaded
+                </p>
+              )}
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100 bg-gray-50 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:bg-[#141414] dark:text-gray-400">
+                    <th className="px-4 py-2.5">Item</th>
+                    <th className="px-4 py-2.5">Original Condition</th>
+                    <th className="px-4 py-2.5">Status</th>
+                    <th className="px-4 py-2.5">Damage</th>
+                    <th className="px-4 py-2.5">Action</th>
+                    <th className="px-4 py-2.5 text-right">Cost (PLN)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {room.assessments.map((item, itemIdx) => {
+                    const isEditingThisCost =
+                      editingCost?.roomIdx === roomIdx &&
+                      editingCost?.itemIdx === itemIdx;
+
+                    return (
+                      <tr
+                        key={item.item_name}
+                        className={`border-b border-gray-50 transition-colors dark:border-gray-800/50 ${
+                          itemIdx % 2 === 1
+                            ? "bg-gray-50/50 dark:bg-[#141414]/50"
+                            : ""
+                        }`}
+                      >
+                        <td className="px-4 py-2.5 font-medium text-gray-900 dark:text-gray-100">
+                          {item.item_name}
+                        </td>
+                        <td className="px-4 py-2.5 text-gray-600 dark:text-gray-400">
+                          {item.original_condition || "--"}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <select
+                            value={item.current_status}
+                            onChange={(e) =>
+                              handleStatusChange(roomIdx, itemIdx, e.target.value)
+                            }
+                            className="cursor-pointer rounded border-0 bg-transparent p-0 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-1 dark:focus:ring-offset-gray-900"
+                            aria-label={`Status for ${item.item_name}`}
                           >
-                            <span className="font-medium text-gray-900 group-hover:text-indigo-600 dark:text-gray-100 dark:group-hover:text-indigo-400">
-                              {item.estimated_cost_pln.toLocaleString()}
-                            </span>
-                            {item._costOverridden && (
-                              <span className="block text-[10px] text-gray-400 line-through dark:text-gray-500">
-                                {item._originalCost.toLocaleString()}
+                            <option value="ok">OK</option>
+                            <option value="damaged">Damaged</option>
+                            <option value="missing">Missing</option>
+                          </select>
+                          <div className="mt-0.5">
+                            <StatusBadge status={item.current_status} />
+                          </div>
+                        </td>
+                        <td className="max-w-[200px] px-4 py-2.5 text-gray-600 dark:text-gray-400">
+                          {item.damage_description || "--"}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <ActionBadge action={item.action} />
+                        </td>
+                        <td className="px-4 py-2.5 text-right">
+                          {isEditingThisCost ? (
+                            <input
+                              type="number"
+                              min="0"
+                              value={costInput}
+                              onChange={(e) => setCostInput(e.target.value)}
+                              onBlur={commitCost}
+                              onKeyDown={handleCostKeyDown}
+                              autoFocus
+                              className="w-24 rounded border border-indigo-300 bg-white px-2 py-1 text-right text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-indigo-600 dark:bg-[#0f0f0f] dark:text-gray-100"
+                              aria-label={`Edit cost for ${item.item_name}`}
+                            />
+                          ) : (
+                            <button
+                              onClick={() => startEditCost(roomIdx, itemIdx)}
+                              className="group cursor-pointer text-right"
+                              aria-label={`Click to edit cost for ${item.item_name}`}
+                            >
+                              <span className="font-medium text-gray-900 group-hover:text-indigo-600 dark:text-gray-100 dark:group-hover:text-indigo-400">
+                                {item.estimated_cost_pln.toLocaleString()}
                               </span>
-                            )}
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                              {item._costOverridden && (
+                                <span className="block text-[10px] text-gray-400 line-through dark:text-gray-500">
+                                  {item._originalCost.toLocaleString()}
+                                </span>
+                              )}
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
 
       {/* Landlord notes */}
       <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-[#1a1a1a]">
@@ -454,6 +644,112 @@ export default function DamageReport({
           rows={4}
           className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-700 dark:bg-[#0f0f0f] dark:text-gray-100 dark:placeholder-gray-600 dark:focus:border-indigo-400 dark:focus:ring-indigo-400"
         />
+      </div>
+
+      {/* AI Report Section */}
+      <div className="rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-[#1a1a1a]">
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">
+            AI-Generated Report
+          </h3>
+          <div className="flex items-center gap-2">
+            {markdownText && (
+              <button
+                onClick={handleCopyReport}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+              >
+                {copied ? (
+                  <>
+                    <svg className="h-3.5 w-3.5 text-green-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                    Copied!
+                  </>
+                ) : (
+                  <>
+                    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                      <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+                    </svg>
+                    Copy Report
+                  </>
+                )}
+              </button>
+            )}
+            <button
+              onClick={handleGenerateReport}
+              disabled={reportLoading}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-indigo-700 disabled:opacity-50 dark:bg-indigo-500 dark:hover:bg-indigo-600"
+            >
+              {reportLoading ? (
+                <>
+                  <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  Generating...
+                </>
+              ) : markdownText ? (
+                "Regenerate"
+              ) : (
+                "Generate Report"
+              )}
+            </button>
+          </div>
+        </div>
+
+        {/* Report loading state */}
+        {reportLoading && (
+          <div className="flex flex-col items-center justify-center py-12">
+            <svg className="mb-3 h-7 w-7 animate-spin text-indigo-500" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+            <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
+              AI is generating your professional report...
+            </p>
+          </div>
+        )}
+
+        {/* Report error */}
+        {reportError && !reportLoading && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 dark:border-red-800 dark:bg-red-900/20">
+            <p className="text-sm text-red-700 dark:text-red-400">{reportError}</p>
+          </div>
+        )}
+
+        {/* Rendered markdown */}
+        {markdownText && !reportLoading && (
+          <div className="rounded-lg border border-gray-100 bg-gray-50 p-5 dark:border-gray-700 dark:bg-[#141414]">
+            <ReactMarkdown
+              components={{
+                h1: ({ children }) => <h1 className="text-2xl font-bold mb-4 text-gray-900 dark:text-gray-100">{children}</h1>,
+                h2: ({ children }) => <h2 className="text-xl font-semibold mt-6 mb-3 text-gray-900 dark:text-gray-100">{children}</h2>,
+                h3: ({ children }) => <h3 className="text-lg font-semibold mt-4 mb-2 text-gray-900 dark:text-gray-100">{children}</h3>,
+                p: ({ children }) => <p className="mb-3 text-gray-700 dark:text-gray-300 leading-relaxed">{children}</p>,
+                ul: ({ children }) => <ul className="list-disc pl-5 mb-3 space-y-1">{children}</ul>,
+                ol: ({ children }) => <ol className="list-decimal pl-5 mb-3 space-y-1">{children}</ol>,
+                li: ({ children }) => <li className="text-gray-700 dark:text-gray-300">{children}</li>,
+                strong: ({ children }) => <strong className="font-bold text-gray-900 dark:text-gray-100">{children}</strong>,
+                table: ({ children }) => <div className="overflow-x-auto mb-4"><table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-sm">{children}</table></div>,
+                thead: ({ children }) => <thead className="bg-gray-50 dark:bg-gray-800">{children}</thead>,
+                th: ({ children }) => <th className="px-3 py-2 text-left font-medium text-gray-700 dark:text-gray-300">{children}</th>,
+                td: ({ children }) => <td className="px-3 py-2 text-gray-600 dark:text-gray-400 border-t border-gray-100 dark:border-gray-800">{children}</td>,
+                blockquote: ({ children }) => <blockquote className="border-l-4 border-indigo-500 pl-4 italic text-gray-600 dark:text-gray-400 mb-3">{children}</blockquote>,
+                hr: () => <hr className="my-6 border-gray-200 dark:border-gray-700" />,
+              }}
+            >
+              {markdownText}
+            </ReactMarkdown>
+          </div>
+        )}
+
+        {/* Empty state */}
+        {!markdownText && !reportLoading && !reportError && (
+          <p className="py-8 text-center text-sm text-gray-400 dark:text-gray-500">
+            Click &quot;Generate Report&quot; to create a professional AI-generated damage report.
+          </p>
+        )}
       </div>
 
       {/* Error */}

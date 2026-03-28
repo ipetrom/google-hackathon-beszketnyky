@@ -6,6 +6,7 @@ import Link from "next/link";
 import api from "@/lib/api";
 import { MoveoutApartment, RoomItems, RoomAssessment } from "@/types/apartment";
 import RoomInspection from "@/components/moveout/RoomInspection";
+import DamageReport from "@/components/moveout/DamageReport";
 
 export default function InspectionWizardPage() {
   const params = useParams();
@@ -240,12 +241,15 @@ export default function InspectionWizardPage() {
           })}
         </div>
 
-        {/* Placeholder for full report */}
-        <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 px-6 py-10 text-center dark:border-gray-700 dark:bg-[#141414]">
-          <p className="text-sm font-medium text-stone-500 dark:text-gray-400">
-            Report coming in Slice 4
-          </p>
-        </div>
+        {/* Full Damage Report */}
+        <DamageReport
+          apartmentId={apartmentId}
+          apartmentAddress={apartment ? `${apartment.address}, ${apartment.city}` : ""}
+          roomAssessments={roomAssessments}
+          onSaved={() => {
+            window.location.href = "/moveout";
+          }}
+        />
       </div>
     );
   }

@@ -175,6 +175,32 @@ async def assess_room_damage(
     return result
 
 
+@router.get("/apartments/{apartment_id}/photos")
+async def get_moveout_photos(apartment_id: str, db: Session = Depends(get_db)) -> dict:
+    """Get all move-out photos for an apartment, grouped by room."""
+    apartment = db.query(Apartment).filter(Apartment.id == apartment_id).first()
+    if not apartment:
+        raise HTTPException(status_code=404, detail="Apartment not found")
+
+    photos = (
+        db.query(Photo)
+        .filter(Photo.apartment_id == apartment_id, Photo.photo_type == "move-out")
+        .order_by(Photo.uploaded_at.desc())
+        .all()
+    )
+
+    result = []
+    for photo in photos:
+        result.append({
+            "id": str(photo.id),
+            "room_type": photo.room_type,
+            "storage_url": gcs_service.get_public_url(photo.storage_url),
+            "uploaded_at": str(photo.uploaded_at),
+        })
+
+    return {"photos": result}
+
+
 @router.post("/apartments/{apartment_id}/report", status_code=201)
 async def save_damage_report(
     apartment_id: str,
@@ -203,6 +229,23 @@ async def save_damage_report(
 
     logger.info("Saved damage report for apartment %s", apartment_id)
     return DamageReportResponse.model_validate(report).model_dump(mode="json")
+
+
+@router.post("/apartments/{apartment_id}/report/markdown")
+async def generate_report_markdown(
+    apartment_id: str,
+    body: dict,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Generate a professional Markdown report from inspection data."""
+    apartment = db.query(Apartment).filter(Apartment.id == apartment_id).first()
+    if not apartment:
+        raise HTTPException(status_code=404, detail="Apartment not found")
+
+    report_data = body.get("report_data", {})
+    markdown = damage_ai_service.generate_markdown_report(report_data)
+
+    return {"markdown": markdown}
 
 
 @router.get("/apartments/{apartment_id}/report")
