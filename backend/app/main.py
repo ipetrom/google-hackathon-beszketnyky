@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.api import apartments, conversations, inventory, lease_periods, listings
+from app.api import apartments, conversations, inventory, lease_periods, listings, moveout
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -33,6 +33,7 @@ app.include_router(inventory.router, prefix="/api")
 app.include_router(listings.router, prefix="/api")
 app.include_router(conversations.router, prefix="/api")
 app.include_router(lease_periods.router, prefix="/api")
+app.include_router(moveout.router, prefix="/api")
 
 # Serve legacy local uploads as static files (fallback for existing photos)
 uploads_dir = os.path.join(os.path.dirname(__file__), "..", "uploads")

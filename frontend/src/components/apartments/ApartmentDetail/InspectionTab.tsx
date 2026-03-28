@@ -1,11 +1,175 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
+import Link from "next/link";
 import api from "@/lib/api";
-import { Photo } from "@/types/apartment";
+import { Photo, DamageReportData, RoomAssessment } from "@/types/apartment";
 
 interface InspectionTabProps {
   apartmentId: string;
+}
+
+function calculateSummaryFromReport(rooms: RoomAssessment[]): {
+  total_items: number;
+  ok_items: number;
+  damaged_items: number;
+  missing_items: number;
+  total_estimated_cost_pln: number;
+} {
+  let total_items = 0;
+  let ok_items = 0;
+  let damaged_items = 0;
+  let missing_items = 0;
+  let total_estimated_cost_pln = 0;
+
+  for (const room of rooms) {
+    for (const item of room.assessments) {
+      total_items++;
+      if (item.current_status === "ok") ok_items++;
+      else if (item.current_status === "damaged") damaged_items++;
+      else if (item.current_status === "missing") missing_items++;
+      total_estimated_cost_pln += item.estimated_cost_pln;
+    }
+  }
+
+  return { total_items, ok_items, damaged_items, missing_items, total_estimated_cost_pln };
+}
+
+function ReadOnlyStatusBadge({ status }: { status: string }) {
+  const styles: Record<string, string> = {
+    ok: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
+    damaged: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400",
+    missing: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
+  };
+  return (
+    <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${styles[status] || styles.ok}`}>
+      {status}
+    </span>
+  );
+}
+
+function ReadOnlyActionBadge({ action }: { action: string | null }) {
+  if (!action) return <span className="text-gray-400 dark:text-gray-600">--</span>;
+  const styles: Record<string, string> = {
+    repair: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
+    replace: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
+  };
+  return (
+    <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${styles[action] || ""}`}>
+      {action}
+    </span>
+  );
+}
+
+function SavedReportView({ report, apartmentId }: { report: DamageReportData; apartmentId: string }) {
+  const summary = report.summary || calculateSummaryFromReport(report.rooms);
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="space-y-1">
+        <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Damage Report</h3>
+        <p className="text-xs text-gray-500 dark:text-gray-400">{report.apartment_address}</p>
+        <div className="flex gap-4 text-xs text-gray-500 dark:text-gray-400">
+          <span>Move-out: {report.moveout_date}</span>
+          <span>Inspection: {report.inspection_date}</span>
+        </div>
+      </div>
+
+      {/* Summary cards */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="rounded-lg border-l-4 border-gray-300 bg-white p-3 shadow-sm dark:border-gray-600 dark:bg-[#1a1a1a]">
+          <p className="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Total</p>
+          <p className="text-xl font-bold text-gray-700 dark:text-gray-300">{summary.total_items}</p>
+        </div>
+        <div className="rounded-lg border-l-4 border-green-300 bg-white p-3 shadow-sm dark:border-green-700 dark:bg-[#1a1a1a]">
+          <p className="text-xs font-medium uppercase tracking-wider text-green-600 dark:text-green-400">OK</p>
+          <p className="text-xl font-bold text-green-700 dark:text-green-400">{summary.ok_items}</p>
+        </div>
+        <div className="rounded-lg border-l-4 border-orange-300 bg-white p-3 shadow-sm dark:border-orange-700 dark:bg-[#1a1a1a]">
+          <p className="text-xs font-medium uppercase tracking-wider text-orange-600 dark:text-orange-400">Damaged</p>
+          <p className="text-xl font-bold text-orange-700 dark:text-orange-400">{summary.damaged_items}</p>
+        </div>
+        <div className="rounded-lg border-l-4 border-red-300 bg-white p-3 shadow-sm dark:border-red-700 dark:bg-[#1a1a1a]">
+          <p className="text-xs font-medium uppercase tracking-wider text-red-600 dark:text-red-400">Missing</p>
+          <p className="text-xl font-bold text-red-700 dark:text-red-400">{summary.missing_items}</p>
+        </div>
+      </div>
+
+      {/* Total cost */}
+      <div className="rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-800 dark:bg-[#1a1a1a]">
+        <div className="flex items-baseline justify-between">
+          <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Total Estimated Cost</span>
+          <span className="text-lg font-bold text-gray-900 dark:text-gray-100">{summary.total_estimated_cost_pln.toLocaleString()} PLN</span>
+        </div>
+      </div>
+
+      {/* Per-room tables */}
+      {report.rooms.map((room) => (
+        <div key={room.room} className="rounded-lg border border-gray-200 bg-white dark:border-gray-800 dark:bg-[#1a1a1a]">
+          <div className="border-b border-gray-100 px-4 py-2.5 dark:border-gray-800">
+            <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{room.room}</h4>
+            {room.room_notes && (
+              <p className="mt-0.5 text-xs italic text-gray-500 dark:text-gray-400">{room.room_notes}</p>
+            )}
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-100 bg-gray-50 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:border-gray-800 dark:bg-[#141414] dark:text-gray-400">
+                  <th className="px-4 py-2">Item</th>
+                  <th className="px-4 py-2">Original Condition</th>
+                  <th className="px-4 py-2">Status</th>
+                  <th className="px-4 py-2">Damage</th>
+                  <th className="px-4 py-2">Action</th>
+                  <th className="px-4 py-2 text-right">Cost (PLN)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {room.assessments.map((item, idx) => (
+                  <tr
+                    key={item.item_name}
+                    className={`border-b border-gray-50 dark:border-gray-800/50 ${idx % 2 === 1 ? "bg-gray-50/50 dark:bg-[#141414]/50" : ""}`}
+                  >
+                    <td className="px-4 py-2 font-medium text-gray-900 dark:text-gray-100">{item.item_name}</td>
+                    <td className="px-4 py-2 text-gray-600 dark:text-gray-400">{item.original_condition || "--"}</td>
+                    <td className="px-4 py-2"><ReadOnlyStatusBadge status={item.current_status} /></td>
+                    <td className="max-w-[200px] px-4 py-2 text-gray-600 dark:text-gray-400">{item.damage_description || "--"}</td>
+                    <td className="px-4 py-2"><ReadOnlyActionBadge action={item.action} /></td>
+                    <td className="px-4 py-2 text-right font-medium text-gray-900 dark:text-gray-100">{item.estimated_cost_pln.toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ))}
+
+      {/* Landlord notes */}
+      {report.landlord_notes && (
+        <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-[#1a1a1a]">
+          <h4 className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">Landlord Notes</h4>
+          <p className="whitespace-pre-wrap text-sm text-gray-600 dark:text-gray-400">{report.landlord_notes}</p>
+        </div>
+      )}
+
+      {/* Actions */}
+      <div className="flex items-center gap-3">
+        <Link
+          href={`/moveout/${apartmentId}`}
+          className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-indigo-700"
+        >
+          View Full Report
+        </Link>
+        <Link
+          href={`/moveout/${apartmentId}`}
+          className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+        >
+          Create New Report
+        </Link>
+      </div>
+    </div>
+  );
 }
 
 export default function InspectionTab({ apartmentId }: InspectionTabProps) {
@@ -16,6 +180,8 @@ export default function InspectionTab({ apartmentId }: InspectionTabProps) {
   const [notes, setNotes] = useState("");
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [savedReport, setSavedReport] = useState<DamageReportData | null>(null);
+  const [reportLoading, setReportLoading] = useState(true);
 
   const storageKey = `inspection-notes-${apartmentId}`;
 
@@ -34,6 +200,20 @@ export default function InspectionTab({ apartmentId }: InspectionTabProps) {
   useEffect(() => {
     fetchPhotos();
   }, [fetchPhotos]);
+
+  useEffect(() => {
+    setReportLoading(true);
+    api
+      .get<{ report_data: DamageReportData }>(`/api/moveout/apartments/${apartmentId}/report`)
+      .then((res) => {
+        setSavedReport(res.data.report_data);
+      })
+      .catch(() => {
+        // 404 or error -- no saved report
+        setSavedReport(null);
+      })
+      .finally(() => setReportLoading(false));
+  }, [apartmentId]);
 
   useEffect(() => {
     const saved = localStorage.getItem(storageKey);
@@ -91,16 +271,21 @@ export default function InspectionTab({ apartmentId }: InspectionTabProps) {
     setDragOver(false);
   };
 
-  if (loading) {
+  if (loading || reportLoading) {
     return (
       <div className="flex items-center justify-center py-16">
         <svg className="h-5 w-5 animate-spin text-indigo-500" viewBox="0 0 24 24" fill="none">
           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
         </svg>
-        <span className="ml-2 text-sm text-gray-500 dark:text-gray-400">Loading photos...</span>
+        <span className="ml-2 text-sm text-gray-500 dark:text-gray-400">Loading...</span>
       </div>
     );
+  }
+
+  // If a saved report exists, show the read-only view
+  if (savedReport) {
+    return <SavedReportView report={savedReport} apartmentId={apartmentId} />;
   }
 
   if (error && photos.length === 0) {

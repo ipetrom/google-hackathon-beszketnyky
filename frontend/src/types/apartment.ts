@@ -98,3 +98,67 @@ export interface Message {
   message_text: string;
   timestamp: string;
 }
+
+export interface MoveoutApartment {
+  id: string;
+  address: string;
+  city: string;
+  rooms: number;
+  sqm: number;
+  status: string;
+  inventory_count: number;
+  moveout_date: string;
+}
+
+export interface RoomItems {
+  room_name: string;
+  items: {
+    id: string;
+    item_type: string;
+    object_type: string | null;
+    color: string | null;
+    material: string | null;
+    condition: string | null;
+    condition_notes: string | null;
+  }[];
+}
+
+export interface ValidationResult {
+  detected_items: string[];
+  missing_items: string[];
+  notes: string;
+  photo_url: string | null;
+  photo_storage_url: string | null;
+}
+
+export interface DamageAssessmentItem {
+  item_name: string;
+  original_condition: string | null;
+  current_status: string; // ok, damaged, missing
+  damage_description: string | null;
+  action: string | null; // repair, replace, null
+  estimated_cost_pln: number;
+}
+
+export interface RoomAssessment {
+  room: string;
+  assessments: DamageAssessmentItem[];
+  room_notes: string | null;
+  move_out_photo_url: string | null;
+}
+
+export interface DamageReportData {
+  apartment_id: string;
+  apartment_address: string;
+  moveout_date: string;
+  inspection_date: string;
+  rooms: RoomAssessment[];
+  summary: {
+    total_items: number;
+    ok_items: number;
+    damaged_items: number;
+    missing_items: number;
+    total_estimated_cost_pln: number;
+  };
+  landlord_notes: string;
+}
