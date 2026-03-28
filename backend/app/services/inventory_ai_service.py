@@ -11,29 +11,32 @@ from app.services.vertex_ai_service import create_vertex_client, get_model_id
 
 logger = logging.getLogger(__name__)
 
-INVENTORY_PROMPT = """Analyze this apartment photo. Identify ALL furniture, appliances, fixtures, decor, storage, and lighting items visible in the image.
+INVENTORY_PROMPT = """Analyze this apartment photo and identify all significant furniture, appliances, fixtures, decor, storage, and lighting items visible.
 
 Return a JSON object with this exact structure:
 {
-  "detected_room": "living_room|bedroom|kitchen|bathroom|hallway|other",
-  "photo_notes": "General observations about the room: size estimate, flooring type, wall color, lighting quality, cleanliness, overall condition.",
-  "objects": [
-    {
-      "name": "descriptive name of the item",
-      "type": "furniture|appliance|fixture|decor|storage|lighting|other",
-      "position": "where in the room the item is located",
-      "room": "living_room|bedroom|kitchen|bathroom|hallway|other",
-      "color": "primary color(s)",
-      "material": "primary material (wood, metal, fabric, leather, plastic, glass, ceramic, etc.)",
-      "condition": "excellent|good|fair|poor|damaged",
-      "notes": "any additional observations about this item"
-    }
-  ]
+    "detected_room": "living_room|bedroom|kitchen|bathroom|hallway|other",
+    "photo_notes": "General observations about the room: estimated size, flooring type, wall color, lighting quality, cleanliness, and overall condition.",
+    "objects": [
+        {
+            "name": "descriptive name of the item",
+            "type": "furniture|appliance|fixture|decor|storage|lighting|other",
+            "position": "location within the room",
+            "room": "living_room|bedroom|kitchen|bathroom|hallway|other",
+            "color": "primary color(s)",
+            "material": "primary material (wood, metal, fabric, leather, plastic, glass, ceramic, etc.)",
+            "condition": "excellent|good|fair|poor|damaged",
+            "notes": "additional observations about this item"
+        }
+    ]
 }
 
-Be concise - include  items like lamps, rugs, curtains, shelves, mirrors. Describe them briefly but informatively.
-Do not include structural elements (walls, doors, windows) unless they have notable features.
-Return ONLY the JSON object, no other text."""
+Guidelines:
+- Include notable items: chairs, lamps, rugs, curtains, shelves, mirrors, tables, etc.
+- Exclude trivial items: napkins, pens, small decorative objects
+- Do not list structural elements (walls, doors, windows) unless they have notable features
+- Descriptions should be brief but informative
+- Return ONLY the JSON object, no additional text."""
 
 
 def analyze_photo(gcs_uri: str) -> dict[str, Any]:
