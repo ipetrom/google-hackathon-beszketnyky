@@ -1,6 +1,5 @@
 import logging
 import os
-import shutil
 import uuid
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
@@ -11,12 +10,11 @@ from app.models.apartment import Apartment
 from app.models.photo import Photo
 from app.schemas.apartment import ApartmentCreate, ApartmentResponse, ApartmentUpdate
 from app.schemas.photo import PhotoResponse
+from app.services import gcs_service
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/apartments", tags=["apartments"])
-
-UPLOAD_BASE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "uploads")
 
 
 @router.get("")
@@ -106,6 +104,13 @@ async def delete_apartment(
             detail=f"Apartment {apartment_id} not found",
         )
 
+    # Clean up photos from GCS (best-effort)
+    try:
+        deleted_count = gcs_service.delete_apartment_photos(str(apartment_id))
+        logger.info("Cleaned up %d photos from GCS for apartment %s", deleted_count, apartment_id)
+    except Exception as e:
+        logger.warning("Failed to clean up GCS photos for apartment %s: %s", apartment_id, e)
+
     db.delete(apartment)
     db.commit()
     logger.info("Deleted apartment %s", apartment_id)
@@ -115,43 +120,50 @@ async def delete_apartment(
 # --- Photo endpoints ---
 
 
-def _save_uploaded_photos(
+async def _save_uploaded_photos(
     apartment_id: str,
     files: list[UploadFile],
     room_types: list[str] | None,
     photo_type: str,
     db: Session,
-) -> list[PhotoResponse]:
-    """Save uploaded photos to local storage and create DB records."""
-    upload_dir = os.path.join(UPLOAD_BASE_DIR, "apartments", apartment_id)
-    os.makedirs(upload_dir, exist_ok=True)
-
-    photo_responses: list[PhotoResponse] = []
+) -> list[dict]:
+    """Upload photos to GCS and create DB records."""
+    photo_responses = []
     for i, file in enumerate(files):
         photo_id = uuid.uuid4()
         ext = os.path.splitext(file.filename or "photo.jpg")[1] or ".jpg"
-        filename = f"{photo_id}{ext}"
-        file_path = os.path.join(upload_dir, filename)
 
-        with open(file_path, "wb") as f:
-            shutil.copyfileobj(file.file, f)
+        file_bytes = await file.read()
+
+        # Upload to GCS
+        object_path = gcs_service.upload_photo(
+            apartment_id=apartment_id,
+            photo_id=str(photo_id),
+            file_bytes=file_bytes,
+            content_type=file.content_type or "image/jpeg",
+            ext=ext,
+            photo_type=photo_type,
+        )
 
         room_type = None
         if room_types and i < len(room_types):
             room_type = room_types[i]
 
-        storage_url = f"/uploads/apartments/{apartment_id}/{filename}"
-
         photo = Photo(
             id=photo_id,
             apartment_id=apartment_id,
-            storage_url=storage_url,
+            storage_url=object_path,  # Store GCS object path
             room_type=room_type,
             photo_type=photo_type,
         )
         db.add(photo)
         db.flush()
-        photo_responses.append(PhotoResponse.model_validate(photo))
+
+        # Return with public URL
+        response = PhotoResponse.model_validate(photo)
+        response_dict = response.model_dump()
+        response_dict["storage_url"] = gcs_service.get_public_url(object_path)
+        photo_responses.append(response_dict)
 
     db.commit()
     return photo_responses
@@ -172,7 +184,7 @@ async def upload_photos(
             detail=f"Apartment {apartment_id} not found",
         )
 
-    photos = _save_uploaded_photos(apartment_id, files, room_types, "move-in", db)
+    photos = await _save_uploaded_photos(apartment_id, files, room_types, "move-in", db)
     logger.info("Uploaded %d move-in photos for apartment %s", len(photos), apartment_id)
     return {"photos": photos}
 
@@ -196,7 +208,13 @@ async def get_photos(
         .order_by(Photo.uploaded_at.desc())
         .all()
     )
-    return {"photos": [PhotoResponse.model_validate(p) for p in photos]}
+    photo_list = []
+    for p in photos:
+        response = PhotoResponse.model_validate(p)
+        response_dict = response.model_dump()
+        response_dict["storage_url"] = gcs_service.get_public_url(p.storage_url)
+        photo_list.append(response_dict)
+    return {"photos": photo_list}
 
 
 @router.post("/{apartment_id}/move-out-photos")
@@ -214,6 +232,6 @@ async def upload_move_out_photos(
             detail=f"Apartment {apartment_id} not found",
         )
 
-    photos = _save_uploaded_photos(apartment_id, files, room_types, "move-out", db)
+    photos = await _save_uploaded_photos(apartment_id, files, room_types, "move-out", db)
     logger.info("Uploaded %d move-out photos for apartment %s", len(photos), apartment_id)
     return {"photos": photos}
