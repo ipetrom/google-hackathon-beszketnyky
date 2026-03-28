@@ -177,14 +177,14 @@ async def assess_room_damage(
 
 @router.get("/apartments/{apartment_id}/photos")
 async def get_moveout_photos(apartment_id: str, db: Session = Depends(get_db)) -> dict:
-    """Get all move-out photos for an apartment, grouped by room."""
+    """Get all move-in and move-out photos for an apartment."""
     apartment = db.query(Apartment).filter(Apartment.id == apartment_id).first()
     if not apartment:
         raise HTTPException(status_code=404, detail="Apartment not found")
 
     photos = (
         db.query(Photo)
-        .filter(Photo.apartment_id == apartment_id, Photo.photo_type == "move-out")
+        .filter(Photo.apartment_id == apartment_id)
         .order_by(Photo.uploaded_at.desc())
         .all()
     )
@@ -194,6 +194,7 @@ async def get_moveout_photos(apartment_id: str, db: Session = Depends(get_db)) -
         result.append({
             "id": str(photo.id),
             "room_type": photo.room_type,
+            "photo_type": photo.photo_type,
             "storage_url": gcs_service.get_public_url(photo.storage_url),
             "uploaded_at": str(photo.uploaded_at),
         })
